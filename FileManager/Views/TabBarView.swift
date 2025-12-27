@@ -9,13 +9,29 @@ import SwiftUI
 
 struct TabBarView: View {
     @ObservedObject var viewModel: DriveViewModel
+    @ObservedObject var downloadManager = DownloadManager.shared
     
     var body: some View {
         HStack(spacing: 0) {
+            // Fixed Home Button (Icon only)
+            if let homeTab = viewModel.tabs.first(where: { $0.isHome }) {
+                HomeButton(
+                    isSelected: viewModel.selectedTabId == homeTab.id,
+                    onSelect: { viewModel.selectedTabId = homeTab.id }
+                )
+            }
+            
+            // Vertical divider
+            Rectangle()
+                .fill(Color.secondary.opacity(0.2))
+                .frame(width: 1, height: 28)
+                .padding(.horizontal, 8)
+            
+            // Scrollable Tabs (all except home)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 0) {
-                    ForEach(viewModel.tabs) { tab in
-                        TabItemView(
+                HStack(spacing: 4) {
+                    ForEach(viewModel.tabs.filter { !$0.isHome }) { tab in
+                        ModernTabItem(
                             tab: tab,
                             isSelected: viewModel.selectedTabId == tab.id,
                             onSelect: { viewModel.selectedTabId = tab.id },
@@ -23,23 +39,84 @@ struct TabBarView: View {
                         )
                     }
                 }
+                .padding(.trailing, 8)
             }
             
-            Button(action: { viewModel.addNewTab() }) {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: 30, height: 32)
+            Spacer()
+            
+            // Download button
+            Button(action: { downloadManager.isDownloadPanelOpen.toggle() }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 16))
+                    
+                    if downloadManager.downloads.filter({ $0.status == .downloading }).count > 0 {
+                        Text("\(downloadManager.downloads.filter({ $0.status == .downloading }).count)")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.blue)
+                            .clipShape(Capsule())
+                    }
+                }
+                .foregroundColor(.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
             }
             .buttonStyle(.plain)
-            .background(Color(NSColor.controlBackgroundColor))
+            
+            // New tab button
+            Button(action: { viewModel.addNewTab() }) {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(Color.secondary.opacity(0.1))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
         }
-        .background(Color(NSColor.windowBackgroundColor))
-        .frame(height: 32)
+        .frame(height: 44)
+        .background(Color(NSColor.controlBackgroundColor))
+        .overlay(
+            Rectangle()
+                .frame(height: 0.5)
+                .foregroundColor(Color.secondary.opacity(0.2)),
+            alignment: .bottom
+        )
     }
 }
 
-struct TabItemView: View {
+struct HomeButton: View {
+    let isSelected: Bool
+    let onSelect: () -> Void
+    
+    @State private var isHovered = false
+    
+    var body: some View {
+        Button(action: onSelect) {
+            Image(systemName: "house.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(isSelected ? .white : .blue)
+                .frame(width: 36, height: 36)
+                .background(
+                    Circle()
+                        .fill(isSelected ? Color.blue : (isHovered ? Color.blue.opacity(0.1) : Color.clear))
+                )
+                .overlay(
+                    Circle()
+                        .stroke(isSelected ? Color.clear : (isHovered ? Color.blue.opacity(0.3) : Color.clear), lineWidth: 1.5)
+                )
+        }
+        .buttonStyle(.plain)
+        .padding(.leading, 12)
+        .onHover { isHovered = $0 }
+    }
+}
+
+struct ModernTabItem: View {
     let tab: DriveTab
     let isSelected: Bool
     let onSelect: () -> Void
@@ -49,33 +126,46 @@ struct TabItemView: View {
     
     var body: some View {
         HStack(spacing: 8) {
+            // Icon
             if tab.isLoading {
                 ProgressView()
-                    .scaleEffect(0.5)
-                    .frame(width: 12, height: 12)
+                    .scaleEffect(0.6)
+                    .frame(width: 16, height: 16)
             } else {
-                Image(systemName: "doc.text.fill")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                Image(systemName: tab.favicon)
+                    .font(.system(size: 13))
+                    .foregroundColor(isSelected ? .blue : .secondary)
             }
             
+            // Title
             Text(tab.title)
-                .font(.system(size: 12))
+                .font(.system(size: 13, weight: isSelected ? .medium : .regular))
                 .lineLimit(1)
-                .frame(maxWidth: 150)
+                .frame(maxWidth: 180)
             
+            // Close button (only show on hover)
             if isHovered {
                 Button(action: onClose) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.secondary)
+                        .frame(width: 16, height: 16)
+                        .background(Color.secondary.opacity(0.15))
+                        .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 12)
-        .frame(height: 32)
-        .background(isSelected ? Color(NSColor.selectedContentBackgroundColor) : Color.clear)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? Color.blue.opacity(0.1) : (isHovered ? Color.secondary.opacity(0.08) : Color.clear))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.blue.opacity(0.3) : Color.clear, lineWidth: 1)
+        )
         .contentShape(Rectangle())
         .onTapGesture { onSelect() }
         .onHover { isHovered = $0 }
