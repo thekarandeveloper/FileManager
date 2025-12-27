@@ -66,17 +66,6 @@ struct TabBarView: View {
             }
             .buttonStyle(.plain)
             
-            // New tab button
-            Button(action: { viewModel.addNewTab() }) {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .frame(width: 28, height: 28)
-                    .background(Color.secondary.opacity(0.1))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 12)
         }
         .frame(height: 44)
         .background(Color(NSColor.controlBackgroundColor))
@@ -98,20 +87,14 @@ struct HomeButton: View {
     var body: some View {
         Button(action: onSelect) {
             Image(systemName: "house.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(isSelected ? .white : .blue)
-                .frame(width: 36, height: 36)
-                .background(
-                    Circle()
-                        .fill(isSelected ? Color.blue : (isHovered ? Color.blue.opacity(0.1) : Color.clear))
-                )
-                .overlay(
-                    Circle()
-                        .stroke(isSelected ? Color.clear : (isHovered ? Color.blue.opacity(0.3) : Color.clear), lineWidth: 1.5)
-                )
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.secondary)
+                .frame(width: 28, height: 28)
+                .background(Color.secondary.opacity(0.1))
+                .clipShape(Circle())
         }
         .buttonStyle(.plain)
-        .padding(.leading, 12)
+        .padding(.horizontal, 12)
         .onHover { isHovered = $0 }
     }
 }

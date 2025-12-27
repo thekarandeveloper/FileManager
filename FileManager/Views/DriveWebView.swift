@@ -25,7 +25,6 @@ struct DriveWebView: NSViewRepresentable {
         config.websiteDataStore = .default()
         config.processPool = WKProcessPool()
         
-        // Important: Enable modern features
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
         config.preferences.setValue(true, forKey: "javaScriptCanAccessClipboard")
         config.setValue(true, forKey: "allowUniversalAccessFromFileURLs")
@@ -36,7 +35,6 @@ struct DriveWebView: NSViewRepresentable {
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsLinkPreview = true
         
-        // Updated User Agent - Important for Google Sign In
         webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15"
         
         if #available(macOS 13.3, *) {
@@ -44,23 +42,58 @@ struct DriveWebView: NSViewRepresentable {
         }
         
         context.coordinator.currentTabId = tab.id
+        context.coordinator.setupTimeoutCheck()  // Move here
         
-        let request = URLRequest(url: tab.url)
+        var request = URLRequest(url: tab.url)
+        request.timeoutInterval = 10
         webView.load(request)
+        
+        // Reload observer
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("reloadWebView"),
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let tabId = notification.userInfo?["tabId"] as? UUID,
+               tabId == context.coordinator.currentTabId {
+                var request = URLRequest(url: webView.url ?? tab.url)
+                request.timeoutInterval = 10
+                webView.load(request)
+                context.coordinator.setupTimeoutCheck()
+            }
+        }
         
         return webView
     }
-    
+
     func updateNSView(_ webView: WKWebView, context: Context) {
         // Do nothing to prevent reloading
     }
     
+    
     class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         var parent: DriveWebView
         var currentTabId: UUID?
+        var timeoutTimer: DispatchWorkItem?
         
         init(_ parent: DriveWebView) {
             self.parent = parent
+            super.init()
+            print("👷 Coordinator created")
+        }
+        func setupTimeoutCheck() {
+            timeoutTimer?.cancel()
+            
+            let workItem = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                if let tab = self.parent.viewModel.tabs.first(where: { $0.id == self.currentTabId }),
+                   tab.isLoading && !self.parent.viewModel.isHomeLoaded {
+                    self.parent.viewModel.loadingError = .noInternet
+                }
+            }
+            
+            timeoutTimer = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: workItem)
         }
         
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
@@ -69,9 +102,51 @@ struct DriveWebView: NSViewRepresentable {
                 self.parent.viewModel.updateTab(id: tabId, isLoading: true)
             }
         }
-        
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            guard let tabId = currentTabId else { return }
+            
+            DispatchQueue.main.async {
+                self.parent.viewModel.updateTab(id: tabId, isLoading: false)
+                
+                // Detect error type
+                let nsError = error as NSError
+                if nsError.code == NSURLErrorNotConnectedToInternet {
+                    self.parent.viewModel.loadingError = .noInternet
+                } else if nsError.code == NSURLErrorTimedOut {
+                    self.parent.viewModel.loadingError = .timeout
+                } else {
+                    self.parent.viewModel.loadingError = .unknown(error.localizedDescription)
+                }
+            }
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            guard let tabId = currentTabId else { return }
+            
+            DispatchQueue.main.async {
+                self.parent.viewModel.updateTab(id: tabId, isLoading: false)
+                
+                let nsError = error as NSError
+                if nsError.code == NSURLErrorNotConnectedToInternet {
+                    self.parent.viewModel.loadingError = .noInternet
+                } else if nsError.code == NSURLErrorTimedOut {
+                    self.parent.viewModel.loadingError = .timeout
+                } else if nsError.code >= 500 {
+                    self.parent.viewModel.loadingError = .serverError
+                } else {
+                    self.parent.viewModel.loadingError = .unknown(error.localizedDescription)
+                }
+            }
+        }
+
+        // Also update didFinish to clear errors
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             guard let tabId = currentTabId else { return }
+            
+            // Clear any previous errors
+            DispatchQueue.main.async {
+                self.parent.viewModel.loadingError = nil
+            }
             
             webView.evaluateJavaScript("document.title") { result, error in
                 DispatchQueue.main.async {
@@ -82,23 +157,14 @@ struct DriveWebView: NSViewRepresentable {
                         isLoading: false,
                         url: webView.url
                     )
+                    
+                    if let tab = self.parent.viewModel.tabs.first(where: { $0.id == tabId }), tab.isHome {
+                        self.parent.viewModel.isHomeLoaded = true
+                    }
                 }
             }
         }
         
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            guard let tabId = currentTabId else { return }
-            DispatchQueue.main.async {
-                self.parent.viewModel.updateTab(id: tabId, isLoading: false)
-            }
-        }
-        
-        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            guard let tabId = currentTabId else { return }
-            DispatchQueue.main.async {
-                self.parent.viewModel.updateTab(id: tabId, isLoading: false)
-            }
-        }
         
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             // Handle downloads

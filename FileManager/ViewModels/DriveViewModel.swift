@@ -10,19 +10,19 @@ import WebKit
 class DriveViewModel: ObservableObject {
     @Published var tabs: [DriveTab] = []
     @Published var selectedTabId: UUID?
-    
+    @Published var isHomeLoaded = false
+    @Published var loadingError: NetworkError?
     init() {
         // Home tab - always first
         let homeTab = DriveTab(
             title: "Home",
             url: URL(string: "https://drive.google.com/drive/u/0/my-drive")!,
-            isLoading: false,
+            isLoading: true,
             isHome: true,
             favicon: "house.fill"
         )
         tabs.append(homeTab)
         selectedTabId = homeTab.id
-        
         setupNotifications()
     }
     
