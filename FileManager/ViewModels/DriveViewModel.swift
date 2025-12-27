@@ -21,6 +21,13 @@ class DriveViewModel: ObservableObject {
             isHome: true,
             favicon: "house.fill"
         )
+        let photoTab = DriveTab(
+            title: "Home",
+            url: URL(string: "https://photos.google.com/?pli=1")!,
+            isLoading: true,
+            isHome: true,
+            favicon: "house.fill"
+        )
         tabs.append(homeTab)
         selectedTabId = homeTab.id
         setupNotifications()
